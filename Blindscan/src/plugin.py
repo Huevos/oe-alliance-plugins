@@ -1428,6 +1428,8 @@ class Blindscan(ConfigListScreen, Screen):
 		self.is_c_band_scan = False
 		self.is_circular_band_scan = False
 		self.is_Ku_band_scan = False
+		self.is_Ka_band_scan = False
+		self.Ka_band_lo_freq = 0
 		self.is_user_defined_scan = False
 		self.suggestedPolarisation = _("vertical and horizontal")
 		if band == "Unknown" and self.isLNB(pos, "c_band"):
@@ -1439,12 +1441,16 @@ class Blindscan(ConfigListScreen, Screen):
 		if band == "Unknown" and self.isLNB(pos, "universal_lnb"):
 			band = 'Ku'
 			self.is_Ku_band_scan = True
+		if band == "Unknown" and self.isLNB(pos, "ka_lnb"):
+			band = 'Ka'
+			self.is_Ka_band_scan = True
+			print "[Blindscan][SatBandCheck] Ka local oscillator frequency: %d" % self.Ka_band_lo_freq
 		if band == "Unknown" and self.isLNB(pos, "user_defined"):
 			band = 'user_defined'
 			self.is_user_defined_scan = True
 		# if satellites.xml didn't contain any entries for this satellite check
 		# LNB type instead. Assumes the tuner is configured correctly for C-band.
-		print "[Blindscan][SatBandCheck] band = %s" % (band)
+		print "[Blindscan][SatBandCheck] band = %s" % band
 
 	def isLNB(self, cur_orb_pos, lof_type):
 		nim = nimmanager.nim_slots[int(self.scan_nims.value)]
@@ -1460,12 +1466,18 @@ class Blindscan(ConfigListScreen, Screen):
 				return False
 			lof = currLnb.lof.getValue()
 			print "[Blindscan][isLNB] LNB type: ", lof
-			if lof == lof_type:
-				if lof_type == "user_defined" and (currLnb.lofl.value == 10750 and currLnb.lofh.value == 10750):
-					self.is_circular_band_scan = True
-					self.suggestedPolarisation = _("circular right & circular left")
-					return False
-				return True
+			if lof == "user_defined": # marked as "user_defined" in nim config, nothing to do with calling function
+				# Ka-band. These are popular Ka-band, non-inverted, local oscillator frequencies. Do not add inverted local oscilators here.
+				# These Ka LNBs require intermediate frequencies of 950-1950 MHz to be searched.
+				# 9751 MHz is for debuging/testing by people without Ka-band hardware
+				if lof_type == "ka_lnb" and currLnb.lofl.value == currLnb.lofh.value and currLnb.lofl.value in (9751, 17250, 18250, 19250, 20250):
+					self.Ka_band_lo_freq = currLnb.lofl.value
+					return True
+				elif lof_type == "circular_lnb" and cur_orb_pos in (360, 560) and currLnb.lofl.value == 10750 and currLnb.lofh.value == 10750:
+						return True
+				if lof_type == "user_defined": # marked as "user_defined" in calling function
+					return True
+			return False
 		elif lof_type == "circular_lnb" and nimconfig.configMode.getValue() == "simple" and nimconfig.diseqcMode.value == "single" and cur_orb_pos in (360, 560) and nimconfig.simpleDiSEqCSetCircularLNB.value:
 			return True
 		elif lof_type == "universal_lnb" and nimconfig.configMode.getValue() == "simple":
